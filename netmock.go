@@ -3,6 +3,7 @@ package netmock
 import (
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 )
@@ -15,6 +16,60 @@ func (e netErrorTimeout) Timeout() bool   { return true }
 func (e netErrorTimeout) Temporary() bool { return false }
 
 var ErrTimeout netErrorTimeout = netErrorTimeout{fmt.Errorf("timeout")}
+
+// A netAddr is an address compatible with net.Addr.
+type netAddr string
+
+func (a netAddr) Network() string { return "netmock" }
+func (a netAddr) String() string  { return string(a) }
+
+// Taken from google.golang.com/test/bufconn with modification
+// A conn is a simulated TCP connection compatible with the net.Conn interface.
+type conn struct {
+	io.Reader
+	io.Writer
+
+	laddr netAddr
+	raddr netAddr
+}
+
+func (c *conn) setState(up bool) {
+	c.Reader.(*pipe).setReadState(up)
+	c.Writer.(*pipe).setWriteState(up)
+}
+
+func (c *conn) setDelay(t time.Duration) {
+	c.Reader.(*pipe).setDelay(t)
+}
+
+func (c *conn) Close() error {
+	err1 := c.Reader.(*pipe).Close()
+	err2 := c.Writer.(*pipe).closeWrite()
+
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
+
+func (c *conn) LocalAddr() net.Addr  { return c.laddr }
+func (c *conn) RemoteAddr() net.Addr { return c.raddr }
+
+func (c *conn) SetDeadline(t time.Time) error {
+	c.SetReadDeadline(t)
+	c.SetWriteDeadline(t)
+	return nil
+}
+
+func (c *conn) SetReadDeadline(t time.Time) error {
+	c.Reader.(*pipe).setReadDeadline(t)
+	return nil
+}
+
+func (c *conn) SetWriteDeadline(t time.Time) error {
+	c.Writer.(*pipe).setWriteDeadline(t)
+	return nil
+}
 
 // Taken from google.golang.com/test/bufconn with modification
 // A pipe is a unidirectional read/write channel. It represents one half of
@@ -222,7 +277,7 @@ func (p *pipe) setReadDeadline(t time.Time) {
 	}
 }
 
-func (p *pipe) SetReadConnection(up bool) {
+func (p *pipe) setReadState(up bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -232,7 +287,7 @@ func (p *pipe) SetReadConnection(up bool) {
 	}
 }
 
-func (p *pipe) SetWriteConnection(up bool) {
+func (p *pipe) setWriteState(up bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
