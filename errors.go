@@ -3,6 +3,7 @@ package netmock
 import (
 	"errors"
 	"fmt"
+	"net"
 )
 
 // A netErrorTimeout is an error that indicates a timeout and is compatible
@@ -12,7 +13,7 @@ type netErrorTimeout struct{ error }
 func (e netErrorTimeout) Timeout() bool   { return true }
 func (e netErrorTimeout) Temporary() bool { return false }
 
-var ErrTimeout netErrorTimeout = netErrorTimeout{fmt.Errorf("timeout")}
+var ErrTimeout net.Error = netErrorTimeout{fmt.Errorf("timeout")}
 
 var ErrClosed = errors.New("closed")
 
