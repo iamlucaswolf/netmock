@@ -326,6 +326,10 @@ func (h *Host) DialContext(ctx context.Context, address string) (net.Conn, error
 	}
 
 	peer := h.nw.Lookup(address)
+	if peer == nil {
+		return nil, ErrNoRoute
+	}
+
 	c, err := peer.doDial(ctx, address, h, h.bufSize)
 	if c != nil {
 		h.registerConn(c)
