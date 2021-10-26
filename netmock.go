@@ -275,6 +275,13 @@ func (h *Host) Disconnect() {
 	}
 }
 
+// IsConnected returns whether the host is connected to the network.
+func (h *Host) IsConnected() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.connected
+}
+
 // Listen announces on the given address.
 //
 // If the address is not assigned to the host, or is already bound to another
