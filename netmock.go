@@ -299,12 +299,24 @@ func (h *Host) Listen(address string) (net.Listener, error) {
 		return nil, ErrAddrInUse
 	}
 
+	onAccept := func(c *conn) {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.registerConnUnsafe(c)
+	}
+
+	onConnClose := func(c *conn) {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.unregisterConnUnsafe(c)
+	}
+
 	lis = &listener{
 		addr:        netAddr(address),
 		doneCh:      make(chan struct{}),
 		acceptCh:    make(chan *conn),
-		onAccept:    func(c *conn) { h.registerConn(c) },
-		onConnClose: func(c *conn) { h.unregisterConn(c) },
+		onAccept:    onAccept,
+		onConnClose: onConnClose,
 		onClose:     func() { h.unbindAddr(address) },
 	}
 
@@ -324,6 +336,9 @@ func (h *Host) Dial(address string) (net.Conn, error) {
 }
 
 func (h *Host) DialContext(ctx context.Context, address string) (net.Conn, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	if !validateAddr(address) {
 		return nil, ErrInvalidAddr
 	}
@@ -339,8 +354,13 @@ func (h *Host) DialContext(ctx context.Context, address string) (net.Conn, error
 
 	c, err := peer.doDial(ctx, address, h, h.bufSize)
 	if c != nil {
-		h.registerConn(c)
-		c.onClose = func() { h.unregisterConn(c) }
+		h.registerConnUnsafe(c)
+
+		c.onClose = func() {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.unregisterConnUnsafe(c)
+		}
 	}
 
 	return c, err
@@ -362,10 +382,7 @@ func (h *Host) doDial(ctx context.Context, address string, remote *Host, bufsize
 	return lis.doDial(ctx, remote, bufsize)
 }
 
-func (h *Host) registerConn(c *conn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
+func (h *Host) registerConnUnsafe(c *conn) {
 	addr := c.RemoteAddr().String()
 	conns, ok := h.conns[addr]
 
@@ -380,10 +397,7 @@ func (h *Host) registerConn(c *conn) {
 	c.setDelay(h.delays[addr])
 }
 
-func (h *Host) unregisterConn(c *conn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
+func (h *Host) unregisterConnUnsafe(c *conn) {
 	addr := c.RemoteAddr().String()
 	conns := h.conns[addr]
 
